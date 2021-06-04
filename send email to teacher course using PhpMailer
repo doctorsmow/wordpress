@@ -1,0 +1,140 @@
+use PHPMailer\PHPMailer\PHPMailer;
+use PHPMailer\PHPMailer\Exception;
+
+/** Include required files */
+require_once($CFG->libdir.'/filelib.php');
+require_once($CFG->libdir.'/eventslib.php');
+require_once($CFG->dirroot.'/user/selector/lib.php');
+require_once($CFG->libdir.'/accesslib.php');
+
+require_once('phpmailer/Exception.php');
+require_once('phpmailer/PHPMailer.php');
+require_once('phpmailer/SMTP.php');
+
+function hsuforum_add_new_post($post, $mform, &$message, \mod_hsuforum\upload_file $uploader = null) {
+    global $USER, $CFG, $DB;
+
+    $discussion = $DB->get_record('hsuforum_discussions', array('id' => $post->discussion));
+    $forum      = $DB->get_record('hsuforum', array('id' => $discussion->forum));
+    $cm         = get_coursemodule_from_instance('hsuforum', $forum->id);
+    $context    = context_module::instance($cm->id);
+
+    $post->created    = $post->modified = time();
+    $post->mailed     = HSUFORUM_MAILED_PENDING;
+    $post->userid     = $USER->id;
+    $post->attachment = "";
+    if (!isset($post->totalscore)) {
+        $post->totalscore = 0;
+    }
+    if (!isset($post->mailnow)) {
+        $post->mailnow    = 0;
+    }
+
+    $post->id = $DB->insert_record("hsuforum_posts", $post);
+    $post->message = file_save_draft_area_files($post->itemid, $context->id, 'mod_hsuforum', 'post', $post->id,
+            mod_hsuforum_post_form::editor_options($context, null), $post->message);
+    $DB->set_field('hsuforum_posts', 'message', $post->message, array('id'=>$post->id));
+    hsuforum_add_attachment($post, $forum, $cm, $mform, $message, $uploader);
+    
+    $forum_subscription = $DB->get_record('hsuforum_subscriptions', array('forum'=>$forum->id));
+    $userposting = $DB->get_record('user', array('id'=>$post->userid));
+    $usersubscription = $DB->get_records('user', array('id'=>$forum_subscription->userid));
+    $emailtosusbcribe = $usersubscription->email;
+    $sql= "SELECT u.* FROM mdl_role_assignments ra, mdl_user u, mdl_course c, mdl_context cxt WHERE ra.userid = u.id AND ra.contextid = cxt.id AND cxt.contextlevel = 50 AND cxt.instanceid = c.id AND c.id = :courseid AND roleid = 3";
+    $records = $DB->get_records_sql($sql, array('courseid' => $post->course));
+   
+    $role = $DB->get_record('role', array('shortname' => 'editingteacher'));
+    $contexto = get_context_instance(CONTEXT_COURSE, $post->course);
+    $teachers_id = $DB->get_records('role_assignments', array('contextid'=>$contexto->id,'roleid'=>$role->id));
+
+
+    foreach ($teachers_id as $each_teachers_id) {
+        $teachers_object = $DB->get_records('user', array('id'=>$each_teachers_id->userid));
+        
+        foreach ($teachers_object as $each_teachers_object) {
+
+        $mail = new PHPMailer(true);
+
+            //Server settings
+            $mail->SMTPDebug = 0;                                 // Enable verbose debug output
+            $mail->isSMTP();                                      // Set mailer to use SMTP
+            $mail->Host = $CFG->smtphosts;  // Specify main and backup SMTP servers
+            $mail->SMTPAuth = true;                               // Enable SMTP authentication
+            $mail->Username = $CFG->smtpuser;                 // SMTP username
+            $mail->Password = $CFG->smtppass;                           // SMTP password
+            $mail->SMTPSecure = 'tls';                            // Enable TLS encryption, `ssl` also accepted
+            $mail->Port = 465;
+            /*$mail->SMTPOptions = array(
+            'ssl' => array(
+                'verify_peer' => false,
+                'verify_peer_name' => false,
+                'allow_self_signed' => true
+            )
+        );*/
+            $linktodiscussion = new moodle_url('/mod/hsuforum/discuss.php', array('d' => $post->discussion));
+            $userFrom = $each_teachers_object->email;
+            $bodyMessage = $userposting->firstname." has commented in discussion forum: ".$forum->name.", check here: ".$linktodiscussion;
+            //Recipients
+            $mailFrom="info@taond.com";
+            $mail->setFrom($mailFrom, $forum->name);
+            $mail->addAddress($userFrom, $userposting->firstname);     // Add a recipient
+
+            //Content
+            $mail->isHTML(true);                                  // Set email format to HTML
+            $mail->Subject = $post->subject;
+            $mail->Body    = $bodyMessage;
+
+            $mail->send();
+
+        }
+       
+    }
+
+    foreach ($usersubscription as $each_usersubscription) {
+        $mail = new PHPMailer(true);                              // Passing `true` enables exceptions
+            //Server settings
+            $mail->SMTPDebug = 0;                                 // Enable verbose debug output
+            $mail->isSMTP();                                      // Set mailer to use SMTP
+            $mail->Host = $CFG->smtphosts;  // Specify main and backup SMTP servers
+            $mail->SMTPAuth = true;                               // Enable SMTP authentication
+            $mail->Username = $CFG->smtpuser;                 // SMTP username
+            $mail->Password = $CFG->smtppass;                           // SMTP password
+            $mail->SMTPSecure = 'ssl';                            // Enable TLS encryption, `ssl` also accepted
+            $mail->Port = 465;
+            $mail->SMTPOptions = array(
+            /*'ssl' => array(
+                'verify_peer' => false,
+                'verify_peer_name' => false,
+                'allow_self_signed' => true
+            )
+        );*/
+            $linktodiscussion = new moodle_url('/mod/hsuforum/discuss.php', array('d' => $post->discussion));
+            $userFrom = $each_usersubscription->email;
+            $bodyMessage = $userposting->firstname." has commented in discussion forum: ".$forum->name.", check here: ".$linktodiscussion;
+            //Recipients
+            $mailFrom="info@taond.com";
+            $mail->setFrom($mailFrom, $forum->name);
+            $mail->addAddress($userFrom, $userposting->firstname);     // Add a recipient
+
+            //Content
+            $mail->isHTML(true);                                  // Set email format to HTML
+            $mail->Subject = $post->subject;
+            $mail->Body    = $bodyMessage;
+
+            $mail->send();
+    }
+        
+
+    // Update discussion modified date
+    if (empty($post->privatereply)) {
+        $DB->set_field("hsuforum_discussions", "timemodified", $post->modified, array("id" => $post->discussion));
+        $DB->set_field("hsuforum_discussions", "usermodified", $post->userid, array("id" => $post->discussion));
+    }
+
+    hsuforum_mark_post_read($post->userid, $post, $post->forum);
+
+    // Let Moodle know that assessable content is uploaded (eg for plagiarism detection)
+    hsuforum_trigger_content_uploaded_event($post, $cm, 'hsuforum_add_new_post');
+
+    return $post->id;
+}
