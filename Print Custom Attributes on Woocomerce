@@ -1,0 +1,25 @@
+<?php
+function action_woocommerce_after_single_product(  ) { 
+global $product; 
+global $wpdb;
+$results = $wpdb->get_results( "SELECT ID FROM wp_posts WHERE post_title ='$titulo' ");
+$titulo = $product->get_title();
+    echo " <table class='woocommerce-product-attributes shop_attributes new'>";
+      echo " <tr class='woocommerce-product-attributes-item woocommerce-product-attributes-item--attribute_pa_other_apps'> ";
+      echo " <th class='woocommerce-product-attributes-item__label'>Otras Aplicaciones</th>";
+      echo " <td class='woocommerce-product-attributes-item__value'> ";
+      echo "<div class='others-app'>";
+
+      foreach ($results as $result):
+          $myId = $result->ID;
+          $modelos = $wpdb->get_results( "SELECT meta_value FROM wp_postmeta WHERE meta_key ='_sku' AND post_id='$myId ' ");
+          foreach ($modelos as $modelo):       
+            echo $modelo->meta_value .", ";
+            endforeach;        
+          endforeach;
+          echo "</div>";
+          echo " </td>";
+          echo " </tr>";
+    echo "</table>";
+};
+?>
