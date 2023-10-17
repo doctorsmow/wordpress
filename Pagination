@@ -1,0 +1,130 @@
+    
+    /*
+    * Build a html with courses list of a learning path
+    *
+    * @param (courses) learning paths courses array
+    */
+    public function courses_list($courses = [], $learningpath)
+    {   
+        global $USER , $OUTPUT;//declarar constante output
+        $page = optional_param('page', 0, PARAM_INT);//declarar variables necesarias
+        $dashboard_per_page = optional_param('userperpage', 10, PARAM_INT);//declarar variables necesarias
+        $coursestmp = getCoursesInfo($learningpath,false,$USER->id,null,null);
+        $courseKey = array_keys($coursestmp);
+
+        
+        $output = html_writer::start_tag('ul', array('class' => 'header lpd-courses'));
+            $output .= html_writer::start_tag('li', array('class' => 'header course-description ui-sortable-handle'));
+                $output .= html_writer::start_tag('div', array('class' => 'col-xs-8 col-sm-4 course_name'));
+                    $output .= html_writer::tag('span', get_string('course_name', 'local_learningpaths'),array('class' => ''));
+                $output .= html_writer::end_tag('div');
+
+                $output .= html_writer::start_tag('div', array('class' => 'col-sm-3 credits'));
+                    $output .= html_writer::tag('span', get_string('credits', 'local_learningpaths'),array('class' => ''));
+                $output .= html_writer::end_tag('div');
+
+                $output .= html_writer::start_tag('div', array('class' => 'col-xs-4 col-sm-3 required'));
+                    $output .= html_writer::tag('span', get_string('required', 'local_learningpaths'),array('class' => ''));
+                $output .= html_writer::end_tag('div');
+
+                $output .= html_writer::start_tag('div', array('class' => 'col-sm-2 actions center'));
+                    $output .= html_writer::tag('span', get_string('actions', 'local_learningpaths'),array('class' => ''));
+                $output .= html_writer::end_tag('div');
+            $output .= html_writer::end_tag('li');
+        $output .= html_writer::end_tag('ul');
+        
+        $output .= html_writer::start_tag('ul', array('id' => 'list-course','class' => 'card-box list-courses')); 
+//Justo antes del foreach
+        $li_totals = count($courses);//$courses es la variable que recibe la funcion
+        $la_index  = array_keys($courses);//$courses es la variable que recibe la funcion
+
+        $la_pag_learninpath = array();
+
+        for( $record=($page * $dashboard_per_page); $record < (( $page * $dashboard_per_page ) + $dashboard_per_page) ; $record++ ) {
+           if($courses[ $la_index[$record] ]) $la_pag_learninpath[ $la_index[$record] ] = $courses[ $la_index[$record] ];//$courses es la variable que recibe la funcion
+        }
+        $pages = count($courses) / $dashboard_per_page;//$courses es la variable que recibe la funcion
+        $active_page = 1;//pagina activa
+//El foreach
+        foreach ($la_pag_learninpath as $course) {
+            if(in_array($course->data->courseid, $courseKey)){
+                $credits = ($coursestmp[$course->data->courseid]->credits > 0 )?$coursestmp[$course->data->courseid]->credits:0;
+            }
+            $checked = ($course->data->required == 1) ? 'checked' : '';
+            $required = ($course->data->required) ? get_string('is_required', 'local_learningpaths') : get_string('is_not_required', 'local_learningpaths');
+            
+            // Action buttons for edit prerequisites and remove course
+            $edit_icon = html_writer::tag('i', '', array('class' => 'wid wid-editicon tooltipelement string_class', 'data-placement' => 'bottom',  'title' => get_string('settings','local_learningpaths'),'aria-hidden' => 'true'));
+            $delete_icon = html_writer::tag('i', '', array('class' => 'wid wid-deleteicon tooltipelement', 'data-placement' => 'bottom',  'title' => get_string('delete','local_learningpaths'),'aria-hidden' => 'true','data-item' => $learningpath->id));
+//            $delete_url = new moodle_url("/local/learningpaths/actions.php?action=remove_course&item={$course->data->id}&learningpath={$learningpath}&sesskey={$USER->sesskey}");
+            $attrs = ['class' => 'edit-course', 'data-toggle' => 'modal', 'data-toggle' => 'modal', 'data-target' => "#prerequisites-popup-{$course->data->id}"];
+            $course->data->actions = html_writer::link('#', $edit_icon, $attrs) . html_writer::link('#', $delete_icon,['class' => 'delete-course-learning-path']);
+            
+            // Icon
+            $prerequisites = $course->get_prerequisites();
+            if (count($prerequisites) > 0) {
+                $title = "";
+                foreach ($prerequisites as $prerequisite) {
+                    $title .= "• "."{$prerequisite->coursename} ";
+                }
+                $title .= "";
+                $icon = "<i class=\"tooltipelement_html wid wid-bloki icons_lp\" title=\"{$title}\" ></i>";
+            } else {
+                $icon = '<i class="tooltipelement_html wid wid-icon-course-inprogress icons_lp"></i>';
+            }
+            $coursename = (strlen($course->data->coursename) >= 40)?substr($course->data->coursename, 0, 40).'...':$course->data->coursename;
+            // Build HTML
+            $output .= html_writer::start_tag('li', array('class' => 'course-description ui-sortable-handle', 'data-id' => $course->data->id));
+                $output .= html_writer::tag('div', $icon . $coursename, array('class' => 'col-xs-9 col-sm-4 course_name'));
+                $output .= html_writer::tag('div',$credits, array('class' => 'col-sm-3 credits'));
+                $output .= html_writer::start_tag('div', array('class' => 'col-xs-3 col-sm-3 required'));
+                    //$output .= html_writer::empty_tag('input', array('class' => 'course-switch', 'type' => 'checkbox', $checked => $checked, 'data-courseid' => $course->data->id));
+                     $output .= html_writer::start_tag('div', array('class' => 'togglebutton'));
+                        
+                        $output .= html_writer::start_tag('label', array('class' => 'switch'));
+                        $output .= html_writer::empty_tag('input', array('class' => 'course-switch', 'type' => 'checkbox', $checked => $checked, 'data-courseid' => $course->data->id ));
+                        $output .= html_writer::start_tag('span', array('class' => 'slider round'));
+                        $output .= html_writer::end_tag('span');
+                        $output .= html_writer::end_tag('label');
+                        $output .= html_writer::end_tag('div');
+
+                $output .= html_writer::end_tag('div');
+
+                $output .= html_writer::tag('div', $course->data->actions, array('class' => 'col-sm-2 actions'));
+
+                $output .= $this->add_prerequisites_popup($course);
+
+            $output .= html_writer::end_tag('li');
+        }
+//CIerra el foreach, comienza la paginacion
+            $output .= html_writer::start_tag('li');
+                $output .= html_writer::start_tag('form',array('method'=>'POST'));//Metodo
+                    $output .= html_writer::start_tag('div', array('style'=>'float:left;padding-top: 7px;margin-right: 10px;'));
+                            $output .= html_writer::tag('span',get_string('recordsperpage','local_people'), array());
+                    $output .= html_writer::end_tag('div');
+
+                    $output .= html_writer::start_tag('div', array('style'=>'float:left;'));
+                       $output .= html_writer::start_tag('select',array('type'=>'text','id'=>'id_userperpage','name'=>'userperpage','class'=>'form-control','style'=>'width:70px;'));
+                       $vals = array(10,20,30,40,50,60,70,80,90,100);//selector que pinta del 1 al 100 por pagina
+                       foreach ($vals  as $key) {//se hace el proceso de paginado
+                       $selectedperpage = '';
+                        if($dashboard_per_page == $key ) $selectedperpage = 'selected' ;
+                            $output .= html_writer::tag('option',$key, array($selectedperpage=>$selectedperpage));
+                        }
+
+                        $output .= html_writer::end_tag('select');
+                    $output .= html_writer::end_tag('div');
+
+                    $output .= html_writer::end_tag('form');//Cierra el metodo
+            $output .= html_writer::end_tag('li');
+            $lpid=$course->data->learningpathid;//creo variable y le paso la apuntador a el id del learningpath que es el que me da el id de los datos a mostrar
+
+            $output .= html_writer::start_tag('li');
+                if ($pages > 1)//si es mayor que uno, imprime la paginación
+                    $output .= $OUTPUT->paging_bar(count($courses), $page, $dashboard_per_page,'?id='.$lpid.'&tab=courses');//le paso las variables, page darshboard_per_page, el lpid que creé nuevo. y la tb dodne debe abrir
+             $output .= html_writer::end_tag('li');
+
+        $output .= html_writer::end_tag('ul');
+
+        return $output;
+    }
